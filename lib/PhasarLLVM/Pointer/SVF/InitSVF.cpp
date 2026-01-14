@@ -33,14 +33,17 @@ void psr::initializeSVF() {
   (void)SVFInitialized;
 }
 
-SVF::SVFModule *psr::initSVFModule(psr::LLVMProjectIRDB &IRDB) {
+void psr::initSVFModule(psr::LLVMProjectIRDB &IRDB) {
   psr::initializeSVF();
 
-  auto *Mod = SVF::LLVMModuleSet::buildSVFModule(*IRDB.getModule());
-  if (!Mod) {
+  try {
+    SVF::LLVMModuleSet::buildSVFModule(*IRDB.getModule());
+  } catch (const std::exception &E) {
+    throw std::runtime_error(
+        std::string("SVF failed to create an SVFModule from an llvm::Module: ") +
+        E.what());
+  } catch (...) {
     throw std::runtime_error(
         "SVF failed to create an SVFModule from an llvm::Module!");
   }
-
-  return Mod;
 }

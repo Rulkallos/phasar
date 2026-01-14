@@ -27,7 +27,6 @@
 #include "SVF-LLVM/LLVMModule.h"
 #include "SVF-LLVM/SVFIRBuilder.h"
 #include "SVFIR/SVFIR.h"
-#include "SVFIR/SVFModule.h"
 #include "SVFIR/SVFType.h"
 #include "Util/GeneralType.h"
 #include "WPA/Andersen.h"
@@ -55,12 +54,13 @@ static psr::AliasResult doAliasImpl(SVF::PointerAnalysis *AA,
                                     const llvm::Value *V,
                                     const llvm::Value *Rep) {
   auto *ModSet = SVF::LLVMModuleSet::getLLVMModuleSet();
-  auto *Nod1 = ModSet->getSVFValue(V);
-  auto *Nod2 = ModSet->getSVFValue(Rep);
 
-  if (!Nod1 || !Nod2) {
+  if (!ModSet->hasValueNode(V) || !ModSet->hasValueNode(Rep)) {
     return AliasResult::MayAlias;
   }
+
+  auto Nod1 = ModSet->getValueNode(V);
+  auto Nod2 = ModSet->getValueNode(Rep);
 
   return translateSVFAliasResult(AA->alias(Nod1, Nod2));
 }
@@ -74,13 +74,12 @@ static psr::AliasResult aliasImpl(SVF::PointerAnalysis *AA,
 // NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
 class SVFAliasAnalysisBase : public AliasAnalysisView {
 public:
-  SVFAliasAnalysisBase(SVF::SVFModule *Mod, AliasAnalysisType PATy)
-      : AliasAnalysisView(PATy), IRBuilder(Mod), PAG(IRBuilder.build()) {}
+  SVFAliasAnalysisBase(AliasAnalysisType PATy)
+      : AliasAnalysisView(PATy), IRBuilder(), PAG(IRBuilder.build()) {}
 
   ~SVFAliasAnalysisBase() override {
     SVF::SVFIR::releaseSVFIR();
     SVF::AndersenWaveDiff::releaseAndersenWaveDiff();
-    SVF::SymbolTableInfo::releaseSymbolInfo();
     SVF::LLVMModuleSet::releaseLLVMModuleSet();
   }
 
@@ -95,8 +94,8 @@ protected:
 
 class SVFVFSAnalysis : public SVFAliasAnalysisBase {
 public:
-  SVFVFSAnalysis(SVF::SVFModule *Mod)
-      : SVFAliasAnalysisBase(Mod, AliasAnalysisType::SVFVFS),
+  SVFVFSAnalysis()
+      : SVFAliasAnalysisBase(AliasAnalysisType::SVFVFS),
         // Note: We must use the static createVFSWPA() function, otherwise SVF
         // will leak memory
         VFS(SVF::VersionedFlowSensitive::createVFSWPA(PAG)) {}
@@ -121,9 +120,9 @@ private:
 
 class SVFDDAAnalysis : public SVFAliasAnalysisBase {
 public:
-  SVFDDAAnalysis(SVF::SVFModule *Mod)
-      : SVFAliasAnalysisBase(Mod, AliasAnalysisType::SVFVFS), Client(Mod) {
-    Client.initialise(Mod);
+  SVFDDAAnalysis()
+      : SVFAliasAnalysisBase(AliasAnalysisType::SVFVFS), Client() {
+    Client.initialise();
     DDA.emplace(PAG, &Client);
     DDA->initialize();
     Client.answerQueries(&*DDA);
@@ -153,14 +152,14 @@ private:
 
 auto psr::createSVFVFSAnalysis(LLVMProjectIRDB &IRDB)
     -> std::unique_ptr<AliasAnalysisView> {
-
-  return std::make_unique<SVFVFSAnalysis>(psr::initSVFModule(IRDB));
+  psr::initSVFModule(IRDB);
+  return std::make_unique<SVFVFSAnalysis>();
 }
 
 auto psr::createSVFDDAAnalysis(LLVMProjectIRDB &IRDB)
     -> std::unique_ptr<AliasAnalysisView> {
-
-  return std::make_unique<SVFDDAAnalysis>(psr::initSVFModule(IRDB));
+  psr::initSVFModule(IRDB);
+  return std::make_unique<SVFDDAAnalysis>();
 }
 
 namespace psr {
@@ -217,9 +216,8 @@ public:
     Ret = Set;
 
     auto *ModSet = SVF::LLVMModuleSet::getLLVMModuleSet();
-    auto *Nod = ModSet->getSVFValue(Ptr);
 
-    auto PointerNod = PAG->getValueNode(Nod);
+    auto PointerNod = ModSet->getValueNode(Ptr);
 
     createAliasSet(PointerNod, *Set, *ModSet);
 
@@ -285,11 +283,11 @@ public:
 
     auto &ModSet = *SVF::LLVMModuleSet::getLLVMModuleSet();
     for (const auto &[Nod, Var] : *PAG) {
-      if (!Var->hasValue()) {
+      if (!ModSet.hasLLVMValue(Var)) {
         continue;
       }
 
-      const auto *PointerVal = ModSet.getLLVMValue(Var->getValue());
+      const auto *PointerVal = ModSet.getLLVMValue(Var);
       if (!PointerVal) {
         continue;
       }
@@ -355,5 +353,6 @@ private:
 } // namespace psr
 
 auto psr::createLLVMSVFDDAAliasInfo(LLVMProjectIRDB &IRDB) -> LLVMAliasInfo {
-  return std::make_unique<SVFAliasInfoImpl>(psr::initSVFModule(IRDB));
+  psr::initSVFModule(IRDB);
+  return std::make_unique<SVFAliasInfoImpl>();
 }

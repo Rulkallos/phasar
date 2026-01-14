@@ -11,10 +11,8 @@ pointerNodeToLLVMOrNull(SVF::NodeID Nod, SVF::LLVMModuleSet &ModSet,
                         SVF::SVFIR &PAG) {
 
   if (const SVF::SVFVar *Var = PAG.getGNode(Nod)) {
-    if (const auto *Val = Var->getValue()) {
-      if (const auto *LLVMVal = ModSet.getLLVMValue(Val)) {
-        return LLVMVal;
-      }
+    if (ModSet.hasLLVMValue(Var)) {
+      return ModSet.getLLVMValue(Var);
     }
   }
   return nullptr;
@@ -23,11 +21,9 @@ pointerNodeToLLVMOrNull(SVF::NodeID Nod, SVF::LLVMModuleSet &ModSet,
 [[nodiscard]] inline const llvm::Value *
 objectNodeToLLVMOrNull(SVF::NodeID Nod, SVF::LLVMModuleSet &ModSet,
                        SVF::SVFIR &PAG) {
-  if (const SVF::MemObj *Mem = PAG.getObject(Nod)) {
-    if (const auto *Val = Mem->getValue()) {
-      if (const auto *LLVMVal = ModSet.getLLVMValue(Val)) {
-        return LLVMVal;
-      }
+  if (const SVF::SVFVar *Var = PAG.getGNode(Nod)) {
+    if (ModSet.hasLLVMValue(Var)) {
+      return ModSet.getLLVMValue(Var);
     }
   }
   return nullptr;
@@ -35,15 +31,13 @@ objectNodeToLLVMOrNull(SVF::NodeID Nod, SVF::LLVMModuleSet &ModSet,
 
 [[nodiscard]] inline SVF::NodeID getNodeId(const llvm::Value *Pointer,
                                            SVF::LLVMModuleSet &ModSet,
-                                           SVF::SVFIR &PAG) {
-  auto *Nod = ModSet.getSVFValue(Pointer);
-  return PAG.getValueNode(Nod);
+                                           SVF::SVFIR & /*PAG*/) {
+  return ModSet.getValueNode(Pointer);
 }
 [[nodiscard]] inline SVF::NodeID getObjNodeId(const llvm::Value *Obj,
                                               SVF::LLVMModuleSet &ModSet,
-                                              SVF::SVFIR &PAG) {
-  auto *Nod = ModSet.getSVFValue(Obj);
-  return PAG.getObjectNode(Nod);
+                                              SVF::SVFIR & /*PAG*/) {
+  return ModSet.getObjectNode(Obj);
 }
 
 } // namespace psr
